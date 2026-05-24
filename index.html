@@ -176,12 +176,6 @@
             <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">ระยะทางจากร้าน <span style="color:#c0392b;">*</span></label>
             <select id="distance" class="field-input">
               <option value="">-- เลือกระยะทาง --</option>
-              <option value="0">0–5 กม. (ฟรีค่าเดินทาง)</option>
-              <option value="50">6–10 กม. (+50 บาท)</option>
-              <option value="100">11–20 กม. (+100 บาท)</option>
-              <option value="200">21–30 กม. (+200 บาท)</option>
-              <option value="300">31–50 กม. (+300 บาท)</option>
-              <option value="500">มากกว่า 50 กม. (+500 บาท)</option>
             </select>
           </div>
         </div>
@@ -215,7 +209,16 @@
 
         <!-- Price Table Reference -->
         <div class="card p-5 mt-4">
-          <p style="font-size:12px;font-weight:600;color:#888780;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;">อัตราค่าบริการ</p>
+          <div class="flex items-center justify-between mb-3">
+            <p style="font-size:12px;font-weight:600;color:#888780;letter-spacing:0.05em;text-transform:uppercase;margin:0;">อัตราค่าบริการ</p>
+            <button onclick="reloadPricing()" title="โหลดราคาใหม่จาก Google Sheet" style="background:none;border:none;cursor:pointer;color:#888780;padding:2px;" id="refresh-btn">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
+          </div>
+          <p id="price-source-badge" style="font-size:11px;color:#888780;margin-bottom:10px;">กำลังโหลด...</p>
           <table style="width:100%;font-size:12px;border-collapse:collapse;">
             <thead>
               <tr style="color:#888780;">
@@ -313,40 +316,191 @@
 
   <script>
     // ========================
-    // PRICING DATA
+    // CONFIG
     // ========================
+    const SHEET_BASE = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQb3PP4W0hw2FF5j32puu-Frc4DRnXGarXPif1qOGePLHHGl-1-jGnx06FCgGcFSiqPboR7diZmFL5X/pub?output=csv';
+
     const SERVICES = {
-      wash:    { label: 'ล้างแอร์',     icon: '💧' },
-      repair:  { label: 'ซ่อมแอร์',    icon: '🔧' },
-      install: { label: 'ติดตั้งแอร์', icon: '🔩' },
+      wash:    { label: 'ล้างแอร์' },
+      repair:  { label: 'ซ่อมแอร์' },
+      install: { label: 'ติดตั้งแอร์' },
     };
 
-    const SIZES = [
+    // Mutable — replaced from Google Sheet on load
+    let SIZES = [
       { value: '9000',  label: '9,000 BTU (เล็ก)' },
       { value: '12000', label: '12,000 BTU (กลาง)' },
       { value: '18000', label: '18,000 BTU (ใหญ่)' },
       { value: '24000', label: '24,000 BTU (ใหญ่พิเศษ)' },
     ];
 
-    const PRICES = {
+    let PRICES = {
       wash:    { '9000': 500,  '12000': 650,  '18000': 800,  '24000': 950  },
       repair:  { '9000': 800,  '12000': 950,  '18000': 1100, '24000': 1300 },
       install: { '9000': 1500, '12000': 1800, '18000': 2200, '24000': 2800 },
     };
 
+    let DISTANCE_OPTIONS = [
+      { label: '0–5 กม.',         fee: 0   },
+      { label: '6–10 กม.',        fee: 50  },
+      { label: '11–20 กม.',       fee: 100 },
+      { label: '21–30 กม.',       fee: 200 },
+      { label: '31–50 กม.',       fee: 300 },
+      { label: 'มากกว่า 50 กม.', fee: 500 },
+    ];
+
     // ========================
     // STATE
     // ========================
     let itemCounter = 0;
-    let items = []; // { id, service, size }
+    let items = [];
     let currentBooking = null;
+
+    // ========================
+    // CSV PARSING
+    // ========================
+    function parseCSV(text) {
+      text = text.replace(/^﻿/, ''); // strip BOM
+      const rows = [];
+      for (const line of text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
+        if (!line.trim()) continue;
+        const cols = [];
+        let cur = '', inQ = false;
+        for (const c of line) {
+          if (c === '"')          inQ = !inQ;
+          else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+          else                    cur += c;
+        }
+        cols.push(cur.trim());
+        if (cols.some(c => c !== '')) rows.push(cols);
+      }
+      return rows;
+    }
+
+    function toNum(str) {
+      return parseInt((str || '').replace(/[^0-9]/g, '') || '0', 10);
+    }
+
+    function parseRateSheet(csv) {
+      const rows = parseCSV(csv);
+      if (rows.length < 2) return null;
+      const header = rows[0];
+
+      // Build size columns from header (skip col 0)
+      const sizeCols = [];
+      for (let i = 1; i < header.length; i++) {
+        const h = header[i]; if (!h) continue;
+        // Extract leading 4+ digit number as BTU key, or fall back to column text
+        const key = (h.replace(/,/g, '').match(/\d{4,}/)?.[0]) || `col${i}`;
+        sizeCols.push({ idx: i, key, label: h });
+      }
+      if (!sizeCols.length) return null;
+
+      const newPrices = {};
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const name = row[0] || '';
+        let svcKey = null;
+        if (name.includes('ล้าง'))     svcKey = 'wash';
+        else if (name.includes('ซ่อม'))    svcKey = 'repair';
+        else if (name.includes('ติดตั้ง')) svcKey = 'install';
+        if (!svcKey) continue;
+        newPrices[svcKey] = {};
+        for (const sc of sizeCols) newPrices[svcKey][sc.key] = toNum(row[sc.idx]);
+      }
+
+      if (!Object.keys(newPrices).length) return null;
+      return {
+        prices: newPrices,
+        sizes:  sizeCols.map(s => ({ value: s.key, label: s.label })),
+      };
+    }
+
+    function parseTravelSheet(csv) {
+      const rows = parseCSV(csv);
+      if (rows.length < 2) return null;
+      const opts = [];
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const label = row[0]; if (!label) continue;
+        let fee = 0;
+        for (let i = row.length - 1; i >= 1; i--) {
+          const v = row[i].replace(/[^0-9]/g, '');
+          if (v) { fee = parseInt(v); break; }
+        }
+        opts.push({ label, fee });
+      }
+      return opts.length ? opts : null;
+    }
+
+    // ========================
+    // SHEET LOADING
+    // ========================
+    async function loadPricingData() {
+      const badge = document.getElementById('price-source-badge');
+      if (badge) { badge.textContent = 'กำลังโหลดราคา...'; badge.style.color = '#888780'; }
+
+      let loaded = false;
+      try {
+        const [rRes, tRes] = await Promise.all([
+          fetch(SHEET_BASE + '&sheet=Rate').catch(() => null),
+          fetch(SHEET_BASE + '&sheet=Travel%20expense').catch(() => null),
+        ]);
+
+        if (rRes?.ok) {
+          const result = parseRateSheet(await rRes.text());
+          if (result) { PRICES = result.prices; SIZES = result.sizes; loaded = true; }
+        }
+        if (tRes?.ok) {
+          const opts = parseTravelSheet(await tRes.text());
+          if (opts) { DISTANCE_OPTIONS = opts; loaded = true; }
+        }
+      } catch (e) {
+        console.warn('Sheet load failed:', e);
+      }
+
+      if (badge) {
+        badge.textContent = loaded ? '● ราคาจาก Google Sheet' : '● ราคาเริ่มต้น (ไม่สามารถโหลด Sheet ได้)';
+        badge.style.color  = loaded ? '#2d7a2d' : '#c0392b';
+      }
+
+      rebuildDistanceSelect();
+      buildPriceTable();
+    }
+
+    // ========================
+    // DISTANCE SELECT
+    // ========================
+    function rebuildDistanceSelect() {
+      const sel = document.getElementById('distance');
+      const prevIdx = sel.selectedIndex > 0 ? sel.selectedIndex - 1 : -1;
+      sel.innerHTML = '<option value="">-- เลือกระยะทาง --</option>';
+      DISTANCE_OPTIONS.forEach((opt, idx) => {
+        const needsFee = !opt.label.includes('บาท') && !opt.label.includes('ฟรี');
+        const suffix   = needsFee ? (opt.fee > 0 ? ` (+${opt.fee.toLocaleString()} บาท)` : ' (ฟรีค่าเดินทาง)') : '';
+        const o = document.createElement('option');
+        o.value = String(idx);
+        o.textContent = opt.label + suffix;
+        sel.appendChild(o);
+      });
+      if (prevIdx >= 0 && prevIdx < DISTANCE_OPTIONS.length) sel.selectedIndex = prevIdx + 1;
+      updateSummary();
+    }
+
+    function getSelectedDistance() {
+      const sel = document.getElementById('distance');
+      if (sel.value === '') return null;
+      return DISTANCE_OPTIONS[parseInt(sel.value)] ?? null;
+    }
 
     // ========================
     // INIT
     // ========================
-    window.addEventListener('DOMContentLoaded', () => {
-      buildPriceTable();
+    window.addEventListener('DOMContentLoaded', async () => {
       setDefaultDate();
+      document.getElementById('distance').addEventListener('change', updateSummary);
+      rebuildDistanceSelect(); // build with defaults immediately
+      await loadPricingData(); // then update from sheet
       addServiceItem();
     });
 
@@ -432,7 +586,8 @@
     // ========================
     function updateSummary() {
       const container = document.getElementById('summary-items');
-      const distanceVal = parseInt(document.getElementById('distance').value) || 0;
+      const distOpt = getSelectedDistance();
+      const distanceVal = distOpt ? distOpt.fee : 0;
 
       if (items.length === 0) {
         container.innerHTML = `<p style="font-size:14px;color:#888780;text-align:center;padding:24px 0;">ยังไม่มีรายการบริการ</p>`;
@@ -473,10 +628,26 @@
       container.innerHTML = html;
     }
 
-    // Listen to distance change for live summary update
-    document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('distance').addEventListener('change', updateSummary);
-    });
+    async function reloadPricing() {
+      const btn = document.getElementById('refresh-btn');
+      btn.style.opacity = '0.4';
+      btn.style.pointerEvents = 'none';
+      await loadPricingData();
+      // Rebuild existing service items' size dropdowns
+      items.forEach(item => {
+        const row = document.getElementById(`item-${item.id}`);
+        if (!row) return;
+        const sizeSelect = row.querySelectorAll('select')[1];
+        if (!sizeSelect) return;
+        const prevVal = item.size;
+        sizeSelect.innerHTML = SIZES.map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+        sizeSelect.value = SIZES.find(s => s.value === prevVal) ? prevVal : SIZES[0].value;
+        item.size = sizeSelect.value;
+      });
+      updateSummary();
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+    }
 
     // ========================
     // BOOKING SUBMISSION
@@ -496,7 +667,7 @@
       const address = document.getElementById('customer-address').value.trim();
       const date    = document.getElementById('booking-date').value;
       const time    = document.getElementById('booking-time').value;
-      const distRaw = document.getElementById('distance').value;
+      const distOpt = getSelectedDistance();
 
       // Validation
       const errors = [];
@@ -504,7 +675,7 @@
       if (!phone)   errors.push('เบอร์โทรศัพท์');
       if (!date)    errors.push('วันที่นัดหมาย');
       if (!time)    errors.push('เวลา');
-      if (distRaw === '') errors.push('ระยะทาง');
+      if (!distOpt) errors.push('ระยะทาง');
       if (items.length === 0) errors.push('รายการบริการอย่างน้อย 1 รายการ');
 
       if (errors.length > 0) {
@@ -512,7 +683,8 @@
         return;
       }
 
-      const travelFee = parseInt(distRaw);
+      const travelFee = distOpt.fee;
+      const distLabel = distOpt.label;
       let subtotal = 0;
       items.forEach(item => { subtotal += PRICES[item.service][item.size]; });
       const total = subtotal + travelFee;
@@ -525,7 +697,6 @@
 
       // Fill modal
       const bookingId = generateBookingId();
-      const distLabel = document.getElementById('distance').options[document.getElementById('distance').selectedIndex].text;
       currentBooking = { bookingId, name, phone, address, datetime: displayDate, items: items.map(i => ({...i})), subtotal, travelFee, total, distLabel };
       document.getElementById('modal-booking-id').textContent = bookingId;
       document.getElementById('modal-name').textContent = name;
