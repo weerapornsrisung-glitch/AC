@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ระบบคำนวณค่าบริการแอร์</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -284,17 +286,27 @@
       <div id="modal-cost" class="flex flex-col gap-2" style="font-size:14px;margin-bottom:20px;"></div>
 
       <!-- Actions -->
-      <div class="flex gap-3">
-        <button class="btn-secondary flex-1" onclick="printBooking()">
-          <span style="display:flex;align-items:center;justify-content:center;gap:6px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="flex gap-2">
+        <button class="btn-secondary" style="flex:0 0 auto;" onclick="printBooking()">
+          <span style="display:flex;align-items:center;gap:5px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
               <rect x="6" y="14" width="12" height="8"/>
             </svg>
             พิมพ์
           </span>
         </button>
-        <button class="btn-primary flex-1" onclick="closeModal()">เสร็จสิ้น</button>
+        <button id="btn-pdf" class="btn-secondary flex-1" onclick="downloadPDF()">
+          <span style="display:flex;align-items:center;justify-content:center;gap:5px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+            ดาวน์โหลดใบเสนอราคา PDF
+          </span>
+        </button>
+        <button class="btn-primary" style="flex:0 0 auto;" onclick="closeModal()">เสร็จสิ้น</button>
       </div>
     </div>
   </div>
@@ -327,6 +339,7 @@
     // ========================
     let itemCounter = 0;
     let items = []; // { id, service, size }
+    let currentBooking = null;
 
     // ========================
     // INIT
@@ -511,7 +524,10 @@
       const displayDate = `${parseInt(d)} ${thMonths[parseInt(m)]} ${parseInt(y) + 543} เวลา ${time} น.`;
 
       // Fill modal
-      document.getElementById('modal-booking-id').textContent = generateBookingId();
+      const bookingId = generateBookingId();
+      const distLabel = document.getElementById('distance').options[document.getElementById('distance').selectedIndex].text;
+      currentBooking = { bookingId, name, phone, address, datetime: displayDate, items: items.map(i => ({...i})), subtotal, travelFee, total, distLabel };
+      document.getElementById('modal-booking-id').textContent = bookingId;
       document.getElementById('modal-name').textContent = name;
       document.getElementById('modal-phone').textContent = phone;
 
@@ -544,7 +560,6 @@
       }).join('');
 
       // Cost
-      const distLabel = document.getElementById('distance').options[document.getElementById('distance').selectedIndex].text;
       document.getElementById('modal-cost').innerHTML = `
         <div style="display:flex;justify-content:space-between;color:#888780;">
           <span>ค่าบริการรวม (${items.length} รายการ)</span>
@@ -575,6 +590,131 @@
 
     function printBooking() {
       window.print();
+    }
+
+    // ========================
+    // PDF EXPORT
+    // ========================
+    async function downloadPDF() {
+      const btn = document.getElementById('btn-pdf');
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = '<span style="display:flex;align-items:center;justify-content:center;gap:5px;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>กำลังสร้าง...</span>';
+      btn.disabled = true;
+
+      try {
+        const b = currentBooking;
+        const now = new Date();
+        const thM = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+        const issuedDate = `${now.getDate()} ${thM[now.getMonth()+1]} ${now.getFullYear()+543}`;
+
+        const itemRows = b.items.map((item, i) => {
+          const svc   = SERVICES[item.service];
+          const size  = SIZES.find(s => s.value === item.size)?.label || '';
+          const price = PRICES[item.service][item.size];
+          const bg    = i % 2 === 0 ? '#fff' : '#fafaf9';
+          return `<tr style="background:${bg};">
+            <td style="padding:9px 12px;text-align:center;color:#888780;font-size:12px;">${i+1}</td>
+            <td style="padding:9px 12px;font-size:13px;">${svc.label}</td>
+            <td style="padding:9px 12px;color:#888780;font-size:12px;">${size}</td>
+            <td style="padding:9px 12px;text-align:right;font-weight:500;font-size:13px;">${price.toLocaleString()}</td>
+          </tr>`;
+        }).join('');
+
+        const container = document.createElement('div');
+        container.style.cssText = 'position:fixed;left:-9999px;top:0;width:595px;min-height:842px;background:#fff;padding:48px;box-sizing:border-box;font-family:Inter,\'Noto Sans Thai\',\'TH Sarabun New\',sans-serif;font-size:13px;color:#1A1A1A;line-height:1.6;';
+
+        container.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1A1A1A;padding-bottom:20px;margin-bottom:24px;">
+            <div>
+              <p style="font-size:18px;font-weight:600;margin:0 0 4px;">บริการแอร์</p>
+              <p style="color:#888780;font-size:12px;margin:0;">ล้าง • ซ่อม • ติดตั้ง ครบวงจร</p>
+            </div>
+            <div style="background:#F1EFE8;border-radius:8px;padding:12px 20px;text-align:center;">
+              <p style="font-size:15px;font-weight:600;margin:0;">ใบเสนอราคา</p>
+              <p style="font-size:10px;color:#888780;margin:0;letter-spacing:0.08em;">QUOTATION</p>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
+            <div>
+              <p style="margin:0 0 3px;"><span style="color:#888780;">เลขที่จอง: </span><strong>${b.bookingId}</strong></p>
+              <p style="margin:0;color:#888780;font-size:12px;">วันออกเอกสาร: ${issuedDate}</p>
+            </div>
+            <div style="text-align:right;">
+              <p style="margin:0;color:#888780;font-size:12px;">วันนัดบริการ</p>
+              <p style="margin:0;font-weight:500;">${b.datetime}</p>
+            </div>
+          </div>
+
+          <div style="border:1px solid rgba(0,0,0,0.12);border-radius:8px;padding:14px 18px;margin-bottom:24px;background:#fafaf9;">
+            <p style="font-size:10px;font-weight:600;color:#888780;letter-spacing:0.07em;text-transform:uppercase;margin:0 0 10px;">ข้อมูลลูกค้า</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;">
+              <p style="margin:0;"><span style="color:#888780;">ชื่อ: </span>${b.name}</p>
+              <p style="margin:0;"><span style="color:#888780;">โทร: </span>${b.phone}</p>
+              ${b.address ? `<p style="margin:0;grid-column:1/-1;"><span style="color:#888780;">ที่อยู่: </span>${b.address}</p>` : ''}
+            </div>
+          </div>
+
+          <p style="font-size:10px;font-weight:600;color:#888780;letter-spacing:0.07em;text-transform:uppercase;margin:0 0 8px;">รายการบริการ</p>
+          <table style="width:100%;border-collapse:collapse;margin-bottom:24px;border-radius:8px;overflow:hidden;">
+            <thead>
+              <tr style="background:#1A1A1A;color:#fff;">
+                <th style="padding:9px 12px;text-align:center;font-weight:500;font-size:11px;width:36px;">#</th>
+                <th style="padding:9px 12px;text-align:left;font-weight:500;font-size:11px;">ประเภทบริการ</th>
+                <th style="padding:9px 12px;text-align:left;font-weight:500;font-size:11px;">ขนาดแอร์</th>
+                <th style="padding:9px 12px;text-align:right;font-weight:500;font-size:11px;">ราคา (บาท)</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+
+          <div style="margin-left:auto;width:280px;">
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.08);font-size:13px;">
+              <span style="color:#888780;">ค่าบริการรวม (${b.items.length} รายการ)</span>
+              <span>${b.subtotal.toLocaleString()} บาท</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(0,0,0,0.08);font-size:13px;">
+              <span style="color:#888780;">ค่าเดินทาง (${b.distLabel.split('(')[0].trim()})</span>
+              <span>${b.travelFee > 0 ? b.travelFee.toLocaleString()+' บาท' : 'ฟรี'}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;background:#F1EFE8;border-radius:8px;padding:10px 14px;margin-top:8px;">
+              <span style="font-weight:600;font-size:14px;">ยอดรวมสุทธิ</span>
+              <span style="font-weight:600;font-size:14px;">${b.total.toLocaleString()} บาท</span>
+            </div>
+          </div>
+
+          <div style="margin-top:48px;padding-top:14px;border-top:1px solid rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;">
+            <p style="margin:0;color:#888780;font-size:10px;">เอกสารนี้ออกโดยระบบอัตโนมัติ ไม่ต้องประทับตรา</p>
+            <p style="margin:0;color:#888780;font-size:10px;">${b.bookingId}</p>
+          </div>
+        `;
+
+        document.body.appendChild(container);
+
+        const canvas = await html2canvas(container, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+
+        document.body.removeChild(container);
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pdfW = pdf.internal.pageSize.getWidth();
+        const pdfH = (canvas.height * pdfW) / canvas.width;
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, Math.min(pdfH, pdf.internal.pageSize.getHeight()));
+        pdf.save(`ใบเสนอราคา-${b.bookingId}.pdf`);
+
+      } catch (err) {
+        console.error(err);
+        alert('ไม่สามารถสร้าง PDF ได้ กรุณาลองใหม่อีกครั้ง');
+      }
+
+      btn.innerHTML = originalHTML;
+      btn.disabled = false;
     }
 
     // ========================
