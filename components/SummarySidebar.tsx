@@ -1,16 +1,16 @@
 'use client'
 
-import type { ServiceItem, PricingData } from '@/types'
+import type { ServiceItem, PricingData, ServiceKey } from '@/types'
 
-const SERVICE_LABELS: Record<string, string> = {
-  wash: 'ล้างแอร์',
-  repair: 'ซ่อมแอร์',
+const SERVICE_LABELS: Record<ServiceKey, string> = {
+  wash:    'ล้างแอร์',
+  repair:  'ซ่อมแอร์',
   install: 'ติดตั้งแอร์',
 }
 
 interface Props {
   items: ServiceItem[]
-  selectedDistIdx: number | null
+  selectedDistIdx: number
   pricing: PricingData
   onRefresh: () => void
   refreshing: boolean
@@ -19,18 +19,16 @@ interface Props {
 export default function SummarySidebar({ items, selectedDistIdx, pricing, onRefresh, refreshing }: Props) {
   const { sizes, prices, distanceOptions, source } = pricing
 
-  const subtotal = items.reduce((s, item) => s + (prices[item.type]?.[item.btu] ?? 0), 0)
-  const travelFee = selectedDistIdx !== null ? (distanceOptions[selectedDistIdx]?.fee ?? 0) : 0
+  const subtotal = items.reduce((s, item) => s + (prices[item.type]?.[item.sizeKey] ?? 0), 0)
+  const travelFee = distanceOptions[selectedDistIdx]?.fee ?? 0
   const total = subtotal + travelFee
 
+  const sourceColor = source.rate ? '#2d7a2d' : '#c0392b'
   const sourceLabel = source.rate && source.travel
-    ? '● Rate ✓  Travel ✓  (จาก Google Sheet)'
+    ? '● โหลดราคาจาก Google Sheet สำเร็จ'
     : source.rate
-    ? '● Rate ✓  (Travel ใช้ค่าเริ่มต้น)'
-    : source.travel
-    ? '● Travel ✓  (Rate ใช้ค่าเริ่มต้น)'
-    : '● ราคาเริ่มต้น (โหลด Sheet ไม่ได้)'
-  const sourceColor = (source.rate || source.travel) ? '#2d7a2d' : '#c0392b'
+    ? '● Rate ✓  |  Travel ใช้ค่าเริ่มต้น'
+    : '● ไม่สามารถโหลดราคาจาก Google Sheet ได้'
 
   return (
     <div className="sticky top-6 flex flex-col gap-4">
@@ -49,16 +47,16 @@ export default function SummarySidebar({ items, selectedDistIdx, pricing, onRefr
         {items.length === 0 ? (
           <p className="text-sm text-muted text-center py-6">ยังไม่มีรายการบริการ</p>
         ) : (
-          <div className="flex flex-col gap-0">
+          <div>
             {items.map((item, i) => {
-              const price = prices[item.type]?.[item.btu]
-              const size = sizes.find(s => s.btu === item.btu)
+              const price = prices[item.type]?.[item.sizeKey]
+              const size = sizes.find(s => s.key === item.sizeKey)
               return (
                 <div key={item.id} className="flex justify-between items-start py-2 border-b border-black/5 text-sm">
                   <span className="text-ink">
                     {i + 1}. {SERVICE_LABELS[item.type]}
                     <br />
-                    <span className="text-muted text-xs">{item.btu.toLocaleString()} BTU ({size?.label})</span>
+                    <span className="text-muted text-xs">{size?.label ?? item.sizeKey}</span>
                   </span>
                   <span className="font-medium text-ink whitespace-nowrap ml-2">
                     {price !== undefined ? `฿${price.toLocaleString()}` : '–'}
@@ -96,7 +94,7 @@ export default function SummarySidebar({ items, selectedDistIdx, pricing, onRefr
             <svg
               width="13" height="13" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-              className={refreshing ? 'animate-spin' : ''}
+              style={{ animation: refreshing ? 'spin 1s linear infinite' : 'none' }}
             >
               <polyline points="23 4 23 10 17 10"/>
               <polyline points="1 20 1 14 7 14"/>
@@ -106,32 +104,35 @@ export default function SummarySidebar({ items, selectedDistIdx, pricing, onRefr
         </div>
         <p className="text-[11px] mb-3" style={{ color: sourceColor }}>{sourceLabel}</p>
 
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="text-muted">
-              <th className="text-left pb-1 font-medium">บริการ / ขนาด</th>
-              <th className="text-right pb-1 font-medium">ราคา (฿)</th>
-            </tr>
-          </thead>
-          <tbody className="text-ink">
-            {Object.entries(SERVICE_LABELS).map(([key, label]) => (
-              <>
-                <tr key={key + '_h'}>
-                  <td colSpan={2} className="pt-2 pb-0.5 font-medium text-muted">{label}</td>
-                </tr>
+        {source.rate ? (
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="text-muted">
+                <th className="text-left pb-1 font-medium">บริการ</th>
                 {sizes.map(s => (
-                  <tr key={key + s.btu}>
-                    <td className="pl-2 py-0.5 text-muted">{s.btu.toLocaleString()} BTU</td>
-                    <td className="text-right py-0.5">
-                      {prices[key as keyof typeof prices]?.[s.btu]?.toLocaleString() ?? '–'}
-                    </td>
-                  </tr>
+                  <th key={s.key} className="text-right pb-1 font-medium">{s.label}</th>
                 ))}
-              </>
-            ))}
-          </tbody>
-        </table>
+              </tr>
+            </thead>
+            <tbody className="text-ink">
+              {(Object.entries(SERVICE_LABELS) as [ServiceKey, string][]).map(([key, label]) => (
+                <tr key={key}>
+                  <td className="py-0.5 text-muted">{label}</td>
+                  {sizes.map(s => (
+                    <td key={s.key} className="text-right py-0.5">
+                      {prices[key]?.[s.key]?.toLocaleString() ?? '–'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="text-xs text-muted">กด ↻ เพื่อลองโหลดใหม่</p>
+        )}
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

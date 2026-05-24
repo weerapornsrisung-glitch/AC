@@ -3,25 +3,22 @@ import type { PricingData, SizeOption, DistanceOption, Prices } from '@/types'
 export const SHEET_BASE =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vQb3PP4W0hw2FF5j32puu-Frc4DRnXGarXPif1qOGePLHHGl-1-jGnx06FCgGcFSiqPboR7diZmFL5X/pub?output=csv'
 
+// Structural defaults only — NO hardcoded prices
 export const DEFAULT_SIZES: SizeOption[] = [
-  { btu: 9000, label: 'เล็ก' },
-  { btu: 12000, label: 'กลาง' },
-  { btu: 18000, label: 'ใหญ่' },
-  { btu: 24000, label: 'ใหญ่พิเศษ' },
+  { key: '9000',  label: '9,000 BTU' },
+  { key: '12000', label: '12,000 BTU' },
+  { key: '18000', label: '18,000 BTU' },
+  { key: '24000', label: '24,000 BTU' },
 ]
 
-export const DEFAULT_PRICES: Prices = {
-  wash: { 9000: 500, 12000: 650, 18000: 800, 24000: 950 },
-  repair: { 9000: 800, 12000: 950, 18000: 1100, 24000: 1300 },
-  install: { 9000: 1500, 12000: 1800, 18000: 2200, 24000: 2800 },
-}
+export const EMPTY_PRICES: Prices = { wash: {}, repair: {}, install: {} }
 
 export const DEFAULT_DISTANCE_OPTIONS: DistanceOption[] = [
-  { label: '0–5 กม.', fee: 0 },
-  { label: '6–10 กม.', fee: 50 },
-  { label: '11–20 กม.', fee: 100 },
-  { label: '21–30 กม.', fee: 200 },
-  { label: '31–50 กม.', fee: 300 },
+  { label: '0–5 กม.',         fee: 0   },
+  { label: '6–10 กม.',        fee: 50  },
+  { label: '11–20 กม.',       fee: 100 },
+  { label: '21–30 กม.',       fee: 200 },
+  { label: '31–50 กม.',       fee: 300 },
   { label: 'มากกว่า 50 กม.', fee: 500 },
 ]
 
@@ -48,76 +45,75 @@ export function parseCSV(raw: string): string[][] {
   return rows
 }
 
+// Parses any cross-table format where:
+//   row 0 = header (col 0 ignored, col 1+ = size labels)
+//   row 1+ = service rows (col 0 = service name containing ล้าง/ซ่อม/ติดตั้ง)
+// The size key is the normalized header text — format-agnostic.
 export function parseRateSheet(csv: string): { sizes: SizeOption[]; prices: Prices; ok: boolean } {
-  try {
-    const rows = parseCSV(csv)
-    if (rows.length < 2) return { sizes: DEFAULT_SIZES, prices: DEFAULT_PRICES, ok: false }
-    const header = rows[0]
-    const sizes: SizeOption[] = []
-    const btuCols: { idx: number; btu: number }[] = []
-    for (let i = 1; i < header.length; i++) {
-      const stripped = header[i].replace(/,/g, '')
-      const match = stripped.match(/(\d{4,})/)
-      const btu = match ? parseInt(match[1], 10) : NaN
-      if (!isNaN(btu)) {
-        btuCols.push({ idx: i, btu })
-        const sizeLabel = btu <= 9000 ? 'เล็ก' : btu <= 12000 ? 'กลาง' : btu <= 18000 ? 'ใหญ่' : 'ใหญ่พิเศษ'
-        sizes.push({ btu, label: sizeLabel })
-      }
-    }
-    if (sizes.length === 0) return { sizes: DEFAULT_SIZES, prices: DEFAULT_PRICES, ok: false }
-    const prices: Prices = {
-      wash: { ...DEFAULT_PRICES.wash },
-      repair: { ...DEFAULT_PRICES.repair },
-      install: { ...DEFAULT_PRICES.install },
-    }
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r]
-      const name = row[0] || ''
-      let key: keyof Prices | null = null
-      if (name.includes('ล้าง')) key = 'wash'
-      else if (name.includes('ซ่อม')) key = 'repair'
-      else if (name.includes('ติดตั้ง')) key = 'install'
-      if (!key) continue
-      const map: Record<number, number> = {}
-      for (const { idx, btu } of btuCols) {
-        const val = toNum(row[idx] || '')
-        if (!isNaN(val)) map[btu] = val
-      }
-      prices[key] = map
-    }
-    return { sizes, prices, ok: true }
-  } catch {
-    return { sizes: DEFAULT_SIZES, prices: DEFAULT_PRICES, ok: false }
+  const rows = parseCSV(csv)
+  if (rows.length < 2) return { sizes: DEFAULT_SIZES, prices: EMPTY_PRICES, ok: false }
+
+  const header = rows[0]
+  const sizeCols: { idx: number; key: string; label: string }[] = []
+
+  for (let i = 1; i < header.length; i++) {
+    const raw = header[i].trim()
+    if (!raw) continue
+    // Normalize: strip commas, collapse whitespace → use as lookup key
+    const key = raw.replace(/,/g, '').replace(/\s+/g, ' ').trim()
+    sizeCols.push({ idx: i, key, label: raw })
   }
+
+  if (!sizeCols.length) return { sizes: DEFAULT_SIZES, prices: EMPTY_PRICES, ok: false }
+
+  const sizes: SizeOption[] = sizeCols.map(s => ({ key: s.key, label: s.label }))
+  const prices: Prices = { wash: {}, repair: {}, install: {} }
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r]
+    const name = (row[0] || '').trim()
+    if (!name) continue
+
+    let svcKey: keyof Prices | null = null
+    if (name.includes('ล้าง'))     svcKey = 'wash'
+    else if (name.includes('ซ่อม'))    svcKey = 'repair'
+    else if (name.includes('ติดตั้ง')) svcKey = 'install'
+    if (!svcKey) continue
+
+    for (const { idx, key } of sizeCols) {
+      const val = toNum(row[idx] ?? '')
+      if (!isNaN(val) && val > 0) prices[svcKey][key] = val
+    }
+  }
+
+  const hasAnyPrice = Object.values(prices).some(p => Object.keys(p).length > 0)
+  if (!hasAnyPrice) return { sizes: DEFAULT_SIZES, prices: EMPTY_PRICES, ok: false }
+
+  return { sizes, prices, ok: true }
 }
 
 export function parseTravelSheet(csv: string): { options: DistanceOption[]; ok: boolean } {
-  try {
-    const rows = parseCSV(csv)
-    if (rows.length < 2) return { options: DEFAULT_DISTANCE_OPTIONS, ok: false }
-    const options: DistanceOption[] = []
-    for (let r = 1; r < rows.length; r++) {
-      const row = rows[r]
-      if (!row[0]?.trim()) continue
-      const label = row[0].trim()
-      let fee = 0
-      for (let i = row.length - 1; i >= 1; i--) {
-        const val = row[i]?.trim()
-        if (val) { fee = toNum(val); break }
-      }
-      options.push({ label, fee: isNaN(fee) ? 0 : fee })
+  const rows = parseCSV(csv)
+  if (rows.length < 2) return { options: DEFAULT_DISTANCE_OPTIONS, ok: false }
+  const options: DistanceOption[] = []
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r]
+    const label = row[0]?.trim()
+    if (!label) continue
+    let fee = 0
+    for (let i = row.length - 1; i >= 1; i--) {
+      const v = row[i]?.trim()
+      if (v) { fee = toNum(v); break }
     }
-    if (options.length === 0) return { options: DEFAULT_DISTANCE_OPTIONS, ok: false }
-    return { options, ok: true }
-  } catch {
-    return { options: DEFAULT_DISTANCE_OPTIONS, ok: false }
+    options.push({ label, fee: isNaN(fee) ? 0 : fee })
   }
+  if (!options.length) return { options: DEFAULT_DISTANCE_OPTIONS, ok: false }
+  return { options, ok: true }
 }
 
 export async function fetchPricing(): Promise<PricingData> {
   let sizes = DEFAULT_SIZES
-  let prices = DEFAULT_PRICES
+  let prices = EMPTY_PRICES
   let distanceOptions = DEFAULT_DISTANCE_OPTIONS
   let rateOk = false
   let travelOk = false
@@ -125,23 +121,25 @@ export async function fetchPricing(): Promise<PricingData> {
   try {
     const rateRes = await fetch(`${SHEET_BASE}&sheet=Rate`, { cache: 'no-store' })
     if (rateRes.ok) {
-      const csv = await rateRes.text()
-      const result = parseRateSheet(csv)
-      sizes = result.sizes
-      prices = result.prices
-      rateOk = result.ok
+      const result = parseRateSheet(await rateRes.text())
+      sizes    = result.sizes
+      prices   = result.prices
+      rateOk   = result.ok
     }
-  } catch {}
+  } catch (e) {
+    console.error('[sheets] Rate fetch error:', e)
+  }
 
   try {
     const travelRes = await fetch(`${SHEET_BASE}&sheet=Travel%20expense`, { cache: 'no-store' })
     if (travelRes.ok) {
-      const csv = await travelRes.text()
-      const result = parseTravelSheet(csv)
+      const result = parseTravelSheet(await travelRes.text())
       distanceOptions = result.options
-      travelOk = result.ok
+      travelOk        = result.ok
     }
-  } catch {}
+  } catch (e) {
+    console.error('[sheets] Travel fetch error:', e)
+  }
 
   return { sizes, prices, distanceOptions, source: { rate: rateOk, travel: travelOk } }
 }

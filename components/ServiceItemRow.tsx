@@ -1,10 +1,10 @@
 'use client'
 
-import type { ServiceItem, SizeOption, Prices } from '@/types'
+import type { ServiceItem, SizeOption, Prices, ServiceKey } from '@/types'
 
-const SERVICE_LABELS: Record<string, string> = {
-  wash: 'ล้างแอร์',
-  repair: 'ซ่อมแอร์',
+const SERVICE_LABELS: Record<ServiceKey, string> = {
+  wash:    'ล้างแอร์',
+  repair:  'ซ่อมแอร์',
   install: 'ติดตั้งแอร์',
 }
 
@@ -12,13 +12,13 @@ interface Props {
   item: ServiceItem
   sizes: SizeOption[]
   prices: Prices
-  onChange: (id: string, field: 'type' | 'btu', value: string) => void
+  onChange: (id: string, field: 'type' | 'sizeKey', value: string) => void
   onDelete: (id: string) => void
   showDelete: boolean
 }
 
 export default function ServiceItemRow({ item, sizes, prices, onChange, onDelete, showDelete }: Props) {
-  const price = prices[item.type]?.[item.btu]
+  const price = prices[item.type]?.[item.sizeKey]
   return (
     <div className="flex items-center gap-3">
       <div className="flex-1">
@@ -27,7 +27,7 @@ export default function ServiceItemRow({ item, sizes, prices, onChange, onDelete
           value={item.type}
           onChange={(e) => onChange(item.id, 'type', e.target.value)}
         >
-          {Object.entries(SERVICE_LABELS).map(([key, label]) => (
+          {(Object.entries(SERVICE_LABELS) as [ServiceKey, string][]).map(([key, label]) => (
             <option key={key} value={key}>{label}</option>
           ))}
         </select>
@@ -35,13 +35,11 @@ export default function ServiceItemRow({ item, sizes, prices, onChange, onDelete
       <div className="flex-1">
         <select
           className="field-input"
-          value={item.btu}
-          onChange={(e) => onChange(item.id, 'btu', e.target.value)}
+          value={item.sizeKey}
+          onChange={(e) => onChange(item.id, 'sizeKey', e.target.value)}
         >
           {sizes.map((s) => (
-            <option key={s.btu} value={s.btu}>
-              {s.btu.toLocaleString()} BTU ({s.label})
-            </option>
+            <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
       </div>
@@ -56,7 +54,7 @@ export default function ServiceItemRow({ item, sizes, prices, onChange, onDelete
             className="btn-danger"
             title="ลบรายการ"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
               <path d="M10 11v6M14 11v6" />

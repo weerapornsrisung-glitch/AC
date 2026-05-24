@@ -1,5 +1,5 @@
 export interface SizeOption {
-  btu: number
+  key: string
   label: string
 }
 
@@ -8,10 +8,12 @@ export interface DistanceOption {
   fee: number
 }
 
+export type ServiceKey = 'wash' | 'repair' | 'install'
+
 export interface Prices {
-  wash: Record<number, number>
-  repair: Record<number, number>
-  install: Record<number, number>
+  wash: Record<string, number>
+  repair: Record<string, number>
+  install: Record<string, number>
 }
 
 export interface PricingData {
@@ -26,8 +28,8 @@ export interface PricingData {
 
 export interface ServiceItem {
   id: string
-  type: 'wash' | 'repair' | 'install'
-  btu: number
+  type: ServiceKey
+  sizeKey: string
   price?: number
 }
 
