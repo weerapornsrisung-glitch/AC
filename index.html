@@ -440,28 +440,47 @@
       const badge = document.getElementById('price-source-badge');
       if (badge) { badge.textContent = 'กำลังโหลดราคา...'; badge.style.color = '#888780'; }
 
-      let loaded = false;
+      let rateOk = false, travelOk = false;
       try {
         const [rRes, tRes] = await Promise.all([
-          fetch(SHEET_BASE + '&sheet=Rate').catch(() => null),
-          fetch(SHEET_BASE + '&sheet=Travel%20expense').catch(() => null),
+          fetch(SHEET_BASE + '&sheet=Rate').catch(e => { console.error('[Sheet] Rate fetch error:', e); return null; }),
+          fetch(SHEET_BASE + '&sheet=Travel%20expense').catch(e => { console.error('[Sheet] Travel fetch error:', e); return null; }),
         ]);
 
         if (rRes?.ok) {
-          const result = parseRateSheet(await rRes.text());
-          if (result) { PRICES = result.prices; SIZES = result.sizes; loaded = true; }
+          const text = await rRes.text();
+          console.log('[Sheet] Rate CSV (raw):\n' + text);
+          const result = parseRateSheet(text);
+          console.log('[Sheet] Rate parsed:', result);
+          if (result) { PRICES = result.prices; SIZES = result.sizes; rateOk = true; }
+          else console.warn('[Sheet] Rate parse failed — check column headers / service names');
+        } else {
+          console.warn('[Sheet] Rate HTTP', rRes?.status, rRes?.statusText);
         }
+
         if (tRes?.ok) {
-          const opts = parseTravelSheet(await tRes.text());
-          if (opts) { DISTANCE_OPTIONS = opts; loaded = true; }
+          const text = await tRes.text();
+          console.log('[Sheet] Travel CSV (raw):\n' + text);
+          const opts = parseTravelSheet(text);
+          console.log('[Sheet] Travel parsed:', opts);
+          if (opts) { DISTANCE_OPTIONS = opts; travelOk = true; }
+          else console.warn('[Sheet] Travel parse failed — check column structure');
+        } else {
+          console.warn('[Sheet] Travel HTTP', tRes?.status, tRes?.statusText);
         }
       } catch (e) {
-        console.warn('Sheet load failed:', e);
+        console.error('[Sheet] load exception:', e);
       }
 
+      const loaded = rateOk || travelOk;
       if (badge) {
-        badge.textContent = loaded ? '● ราคาจาก Google Sheet' : '● ราคาเริ่มต้น (ไม่สามารถโหลด Sheet ได้)';
-        badge.style.color  = loaded ? '#2d7a2d' : '#c0392b';
+        const parts = [];
+        if (rateOk)   parts.push('Rate ✓');
+        if (travelOk) parts.push('Travel ✓');
+        badge.textContent = loaded
+          ? '● ' + parts.join(', ') + ' (จาก Google Sheet)'
+          : '● ราคาเริ่มต้น (โหลด Sheet ไม่ได้ — เปิด Console เพื่อดู error)';
+        badge.style.color = loaded ? '#2d7a2d' : '#c0392b';
       }
 
       rebuildDistanceSelect();
