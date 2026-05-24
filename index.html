@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ระบบคำนวณค่าบริการแอร์</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { inter: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+          colors: {
+            canvas: 'rgb(249,249,247)',
+            ink: '#1A1A1A',
+            muted: '#888780',
+            accent: '#F1EFE8',
+            border: 'rgba(0,0,0,0.12)',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    * { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body { background: rgb(249,249,247); }
+    .subtle-border { border: 1px solid rgba(0,0,0,0.12); }
+    .dashed-border { border: 1px dashed rgba(0,0,0,0.15); }
+    .field-input {
+      width: 100%;
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 14px;
+      color: #1A1A1A;
+      background: #fff;
+      outline: none;
+      transition: box-shadow 0.15s;
+    }
+    .field-input::placeholder { color: #888780; }
+    .field-input:focus { box-shadow: 0 0 0 2px #1A1A1A; }
+    select.field-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888780' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+    .btn-primary {
+      background: #1A1A1A; color: #fff; border-radius: 8px;
+      padding: 10px 32px; font-size: 14px; font-weight: 500;
+      border: none; cursor: pointer; transition: opacity 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+    .btn-secondary {
+      background: #fff; color: #1A1A1A;
+      border: 1px solid rgba(0,0,0,0.12); border-radius: 8px;
+      padding: 8px 20px; font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-secondary:hover { background: #F1EFE8; }
+    .btn-danger {
+      background: transparent; color: #888780;
+      border: 1px solid rgba(0,0,0,0.12); border-radius: 8px;
+      padding: 6px 12px; font-size: 13px; cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .btn-danger:hover { color: #c0392b; border-color: #c0392b; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .summary-card { background: transparent; border-radius: 12px; border: 1px dashed rgba(0,0,0,0.15); }
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; padding: 16px;
+    }
+    .modal-box {
+      background: #fff; border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      max-width: 520px; width: 100%;
+      max-height: 90vh; overflow-y: auto;
+    }
+    .divider { border: none; border-top: 1px solid rgba(0,0,0,0.08); margin: 16px 0; }
+    .badge {
+      display: inline-block; background: #F1EFE8;
+      border-radius: 6px; padding: 2px 10px;
+      font-size: 12px; font-weight: 500; color: #1A1A1A;
+    }
+  </style>
+</head>
+<body class="min-h-screen antialiased py-8 px-4">
+
+  <!-- Header -->
+  <div class="max-w-5xl mx-auto mb-8">
+    <div class="flex items-center gap-3 mb-1">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9h18v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"/>
+        <path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2"/>
+        <line x1="8" y1="15" x2="8" y2="19"/><line x1="16" y1="15" x2="16" y2="19"/>
+        <line x1="6" y1="19" x2="18" y2="19"/>
+        <circle cx="12" cy="9" r="1.5" fill="#1A1A1A" stroke="none"/>
+      </svg>
+      <h1 style="font-size:23px;font-weight:600;color:#1A1A1A;">ระบบคำนวณค่าบริการแอร์</h1>
+    </div>
+    <p style="font-size:14px;color:#888780;">บันทึกงานบริการ ล้าง ซ่อม ติดตั้งแอร์ พร้อมคำนวณค่าใช้จ่ายให้อัตโนมัติ</p>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Left: Form -->
+    <div class="lg:col-span-2 flex flex-col gap-6">
+
+      <!-- Section 1: Service Items -->
+      <div class="card p-6">
+        <div class="flex items-center gap-2 mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          <h2 style="font-size:18px;font-weight:600;color:#1A1A1A;">รายการบริการ</h2>
+        </div>
+
+        <div id="service-list" class="flex flex-col gap-3 mb-4"></div>
+
+        <button class="btn-secondary w-full flex items-center justify-center gap-2" onclick="addServiceItem()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          เพิ่มรายการบริการ
+        </button>
+      </div>
+
+      <!-- Section 2: Customer Info -->
+      <div class="card p-6">
+        <div class="flex items-center gap-2 mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+          <h2 style="font-size:18px;font-weight:600;color:#1A1A1A;">ข้อมูลลูกค้า</h2>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">ชื่อ-นามสกุล <span style="color:#c0392b;">*</span></label>
+            <input id="customer-name" class="field-input" type="text" placeholder="เช่น สมชาย ใจดี" />
+          </div>
+          <div>
+            <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">เบอร์โทรศัพท์ <span style="color:#c0392b;">*</span></label>
+            <input id="customer-phone" class="field-input" type="tel" placeholder="เช่น 081-234-5678" maxlength="15" />
+          </div>
+          <div class="sm:col-span-2">
+            <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">ที่อยู่ / สถานที่ให้บริการ</label>
+            <input id="customer-address" class="field-input" type="text" placeholder="เช่น 123 ถ.สุขุมวิท กรุงเทพฯ" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 3: Booking Date & Distance -->
+      <div class="card p-6">
+        <div class="flex items-center gap-2 mb-5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          <h2 style="font-size:18px;font-weight:600;color:#1A1A1A;">วันเวลาและระยะทาง</h2>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">วันที่นัดหมาย <span style="color:#c0392b;">*</span></label>
+            <input id="booking-date" class="field-input" type="date" />
+          </div>
+          <div>
+            <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">เวลา <span style="color:#c0392b;">*</span></label>
+            <input id="booking-time" class="field-input" type="time" value="09:00" />
+          </div>
+          <div class="sm:col-span-2">
+            <label style="font-size:14px;font-weight:500;color:#1A1A1A;display:block;margin-bottom:6px;">ระยะทางจากร้าน <span style="color:#c0392b;">*</span></label>
+            <select id="distance" class="field-input">
+              <option value="">-- เลือกระยะทาง --</option>
+              <option value="0">0–5 กม. (ฟรีค่าเดินทาง)</option>
+              <option value="50">6–10 กม. (+50 บาท)</option>
+              <option value="100">11–20 กม. (+100 บาท)</option>
+              <option value="200">21–30 กม. (+200 บาท)</option>
+              <option value="300">31–50 กม. (+300 บาท)</option>
+              <option value="500">มากกว่า 50 กม. (+500 บาท)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="flex justify-end gap-3">
+        <button class="btn-secondary" onclick="resetForm()">ล้างข้อมูล</button>
+        <button class="btn-primary" onclick="submitBooking()">
+          คำนวณและยืนยันการจอง
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: Summary Sidebar -->
+    <div class="lg:col-span-1">
+      <div class="sticky top-6">
+        <div class="summary-card p-5">
+          <div class="flex items-center gap-2 mb-4">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#888780" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+            <h2 style="font-size:18px;font-weight:600;color:#1A1A1A;">สรุปรายการ</h2>
+          </div>
+
+          <div id="summary-items" style="font-size:14px;color:#888780;text-align:center;padding:24px 0;">
+            ยังไม่มีรายการบริการ
+          </div>
+        </div>
+
+        <!-- Price Table Reference -->
+        <div class="card p-5 mt-4">
+          <p style="font-size:12px;font-weight:600;color:#888780;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;">อัตราค่าบริการ</p>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;">
+            <thead>
+              <tr style="color:#888780;">
+                <th style="text-align:left;padding-bottom:6px;font-weight:500;">บริการ / ขนาด</th>
+                <th style="text-align:right;padding-bottom:6px;font-weight:500;">ราคา (บาท)</th>
+              </tr>
+            </thead>
+            <tbody id="price-table-body" style="color:#1A1A1A;"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Booking Result Modal -->
+  <div id="modal" class="modal-overlay" style="display:none;" onclick="closeModalOnOverlay(event)">
+    <div class="modal-box p-6" id="modal-box">
+      <!-- header -->
+      <div class="flex items-start justify-between mb-4">
+        <div class="flex items-center gap-3">
+          <div style="background:#F1EFE8;border-radius:10px;padding:10px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div>
+            <p style="font-size:18px;font-weight:600;color:#1A1A1A;">จองสำเร็จ!</p>
+            <p style="font-size:13px;color:#888780;">กรุณาบันทึกหมายเลขการจอง</p>
+          </div>
+        </div>
+        <button onclick="closeModal()" style="background:none;border:none;cursor:pointer;color:#888780;padding:4px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- Booking Number -->
+      <div style="background:#F1EFE8;border-radius:10px;padding:14px 18px;margin-bottom:16px;text-align:center;">
+        <p style="font-size:12px;color:#888780;margin-bottom:4px;">หมายเลขการจอง</p>
+        <p id="modal-booking-id" style="font-size:22px;font-weight:600;color:#1A1A1A;letter-spacing:0.05em;"></p>
+      </div>
+
+      <!-- Customer Info -->
+      <div style="margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:600;color:#888780;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">ข้อมูลลูกค้า</p>
+        <div class="grid grid-cols-2 gap-y-2" style="font-size:14px;">
+          <span style="color:#888780;">ชื่อ</span><span id="modal-name" style="color:#1A1A1A;text-align:right;font-weight:500;"></span>
+          <span style="color:#888780;">โทร</span><span id="modal-phone" style="color:#1A1A1A;text-align:right;font-weight:500;"></span>
+          <span style="color:#888780;" id="modal-address-label" style="display:none;">ที่อยู่</span><span id="modal-address" style="color:#1A1A1A;text-align:right;"></span>
+          <span style="color:#888780;">วันนัด</span><span id="modal-datetime" style="color:#1A1A1A;text-align:right;font-weight:500;"></span>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- Service Items -->
+      <div style="margin-bottom:16px;">
+        <p style="font-size:12px;font-weight:600;color:#888780;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">รายการบริการ</p>
+        <div id="modal-items" class="flex flex-col gap-2"></div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- Cost Summary -->
+      <div id="modal-cost" class="flex flex-col gap-2" style="font-size:14px;margin-bottom:20px;"></div>
+
+      <!-- Actions -->
+      <div class="flex gap-3">
+        <button class="btn-secondary flex-1" onclick="printBooking()">
+          <span style="display:flex;align-items:center;justify-content:center;gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+              <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            พิมพ์
+          </span>
+        </button>
+        <button class="btn-primary flex-1" onclick="closeModal()">เสร็จสิ้น</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================
+    // PRICING DATA
+    // ========================
+    const SERVICES = {
+      wash:    { label: 'ล้างแอร์',     icon: '💧' },
+      repair:  { label: 'ซ่อมแอร์',    icon: '🔧' },
+      install: { label: 'ติดตั้งแอร์', icon: '🔩' },
+    };
+
+    const SIZES = [
+      { value: '9000',  label: '9,000 BTU (เล็ก)' },
+      { value: '12000', label: '12,000 BTU (กลาง)' },
+      { value: '18000', label: '18,000 BTU (ใหญ่)' },
+      { value: '24000', label: '24,000 BTU (ใหญ่พิเศษ)' },
+    ];
+
+    const PRICES = {
+      wash:    { '9000': 500,  '12000': 650,  '18000': 800,  '24000': 950  },
+      repair:  { '9000': 800,  '12000': 950,  '18000': 1100, '24000': 1300 },
+      install: { '9000': 1500, '12000': 1800, '18000': 2200, '24000': 2800 },
+    };
+
+    // ========================
+    // STATE
+    // ========================
+    let itemCounter = 0;
+    let items = []; // { id, service, size }
+
+    // ========================
+    // INIT
+    // ========================
+    window.addEventListener('DOMContentLoaded', () => {
+      buildPriceTable();
+      setDefaultDate();
+      addServiceItem();
+    });
+
+    function setDefaultDate() {
+      const today = new Date();
+      const y = today.getFullYear();
+      const m = String(today.getMonth() + 1).padStart(2, '0');
+      const d = String(today.getDate()).padStart(2, '0');
+      document.getElementById('booking-date').value = `${y}-${m}-${d}`;
+    }
+
+    function buildPriceTable() {
+      const tbody = document.getElementById('price-table-body');
+      const sizeLabels = { '9000': '9K', '12000': '12K', '18000': '18K', '24000': '24K' };
+      let rows = '';
+      for (const [svcKey, svc] of Object.entries(SERVICES)) {
+        rows += `<tr><td colspan="2" style="padding-top:8px;padding-bottom:2px;font-weight:500;color:#888780;">${svc.label}</td></tr>`;
+        for (const size of SIZES) {
+          rows += `<tr>
+            <td style="padding:2px 0;padding-left:8px;color:#888780;">${size.label.split(' ')[0]} BTU</td>
+            <td style="text-align:right;padding:2px 0;">${PRICES[svcKey][size.value].toLocaleString()}</td>
+          </tr>`;
+        }
+      }
+      tbody.innerHTML = rows;
+    }
+
+    // ========================
+    // SERVICE ITEMS
+    // ========================
+    function addServiceItem() {
+      const id = ++itemCounter;
+      items.push({ id, service: 'wash', size: '9000' });
+
+      const list = document.getElementById('service-list');
+      const row = document.createElement('div');
+      row.id = `item-${id}`;
+      row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;background:#fafaf9;border:1px solid rgba(0,0,0,0.08);border-radius:10px;padding:12px;';
+      row.innerHTML = `
+        <div>
+          <label style="font-size:13px;font-weight:500;color:#888780;display:block;margin-bottom:5px;">ประเภทบริการ</label>
+          <select class="field-input" onchange="updateItem(${id},'service',this.value)">
+            ${Object.entries(SERVICES).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:13px;font-weight:500;color:#888780;display:block;margin-bottom:5px;">ขนาดแอร์</label>
+          <select class="field-input" onchange="updateItem(${id},'size',this.value)">
+            ${SIZES.map(s => `<option value="${s.value}">${s.label}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn-danger" onclick="removeItem(${id})" title="ลบรายการ">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+        </button>
+      `;
+      list.appendChild(row);
+      updateSummary();
+    }
+
+    function updateItem(id, field, value) {
+      const item = items.find(i => i.id === id);
+      if (item) {
+        item[field] = value;
+        updateSummary();
+      }
+    }
+
+    function removeItem(id) {
+      if (items.length === 1) {
+        alert('ต้องมีอย่างน้อย 1 รายการบริการ');
+        return;
+      }
+      items = items.filter(i => i.id !== id);
+      document.getElementById(`item-${id}`)?.remove();
+      updateSummary();
+    }
+
+    // ========================
+    // LIVE SUMMARY
+    // ========================
+    function updateSummary() {
+      const container = document.getElementById('summary-items');
+      const distanceVal = parseInt(document.getElementById('distance').value) || 0;
+
+      if (items.length === 0) {
+        container.innerHTML = `<p style="font-size:14px;color:#888780;text-align:center;padding:24px 0;">ยังไม่มีรายการบริการ</p>`;
+        return;
+      }
+
+      let html = `<div class="flex flex-col gap-2">`;
+      let subtotal = 0;
+      items.forEach((item, idx) => {
+        const price = PRICES[item.service][item.size];
+        subtotal += price;
+        const svc = SERVICES[item.service];
+        const sizeLabel = SIZES.find(s => s.value === item.size)?.label || '';
+        html += `
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:13px;padding:6px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
+            <span style="color:#1A1A1A;">${idx+1}. ${svc.label}<br/><span style="color:#888780;font-size:12px;">${sizeLabel}</span></span>
+            <span style="font-weight:500;color:#1A1A1A;white-space:nowrap;margin-left:8px;">${price.toLocaleString()} ฿</span>
+          </div>`;
+      });
+
+      const travel = distanceVal;
+      const total = subtotal + travel;
+
+      html += `</div>
+        <hr class="divider" style="margin:10px 0;">
+        <div style="font-size:13px;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;justify-content:space-between;color:#888780;">
+            <span>ค่าบริการรวม</span><span>${subtotal.toLocaleString()} ฿</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;color:#888780;">
+            <span>ค่าเดินทาง</span><span>${travel > 0 ? '+' + travel.toLocaleString() : 'ฟรี'} ฿</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-weight:600;color:#1A1A1A;font-size:15px;margin-top:4px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.1);">
+            <span>รวมทั้งหมด</span><span>${total.toLocaleString()} ฿</span>
+          </div>
+        </div>`;
+
+      container.innerHTML = html;
+    }
+
+    // Listen to distance change for live summary update
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('distance').addEventListener('change', updateSummary);
+    });
+
+    // ========================
+    // BOOKING SUBMISSION
+    // ========================
+    function generateBookingId() {
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const rand = Math.floor(1000 + Math.random() * 9000);
+      return `AC${yy}${mm}${dd}-${rand}`;
+    }
+
+    function submitBooking() {
+      const name    = document.getElementById('customer-name').value.trim();
+      const phone   = document.getElementById('customer-phone').value.trim();
+      const address = document.getElementById('customer-address').value.trim();
+      const date    = document.getElementById('booking-date').value;
+      const time    = document.getElementById('booking-time').value;
+      const distRaw = document.getElementById('distance').value;
+
+      // Validation
+      const errors = [];
+      if (!name)    errors.push('ชื่อ-นามสกุลลูกค้า');
+      if (!phone)   errors.push('เบอร์โทรศัพท์');
+      if (!date)    errors.push('วันที่นัดหมาย');
+      if (!time)    errors.push('เวลา');
+      if (distRaw === '') errors.push('ระยะทาง');
+      if (items.length === 0) errors.push('รายการบริการอย่างน้อย 1 รายการ');
+
+      if (errors.length > 0) {
+        alert('กรุณากรอกข้อมูลให้ครบ:\n• ' + errors.join('\n• '));
+        return;
+      }
+
+      const travelFee = parseInt(distRaw);
+      let subtotal = 0;
+      items.forEach(item => { subtotal += PRICES[item.service][item.size]; });
+      const total = subtotal + travelFee;
+
+      // Format date for display (Thai-friendly)
+      const [y, m, d] = date.split('-');
+      const thMonths = ['', 'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+                        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      const displayDate = `${parseInt(d)} ${thMonths[parseInt(m)]} ${parseInt(y) + 543} เวลา ${time} น.`;
+
+      // Fill modal
+      document.getElementById('modal-booking-id').textContent = generateBookingId();
+      document.getElementById('modal-name').textContent = name;
+      document.getElementById('modal-phone').textContent = phone;
+
+      const addrLabel = document.getElementById('modal-address-label');
+      const addrVal   = document.getElementById('modal-address');
+      if (address) {
+        addrLabel.style.display = '';
+        addrVal.textContent = address;
+      } else {
+        addrLabel.style.display = 'none';
+        addrVal.textContent = '';
+      }
+
+      document.getElementById('modal-datetime').textContent = displayDate;
+
+      // Items
+      const modalItems = document.getElementById('modal-items');
+      modalItems.innerHTML = items.map((item, idx) => {
+        const price = PRICES[item.service][item.size];
+        const svc   = SERVICES[item.service];
+        const size  = SIZES.find(s => s.value === item.size)?.label || '';
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.06);">
+            <div>
+              <span class="badge" style="margin-right:6px;">${svc.label}</span>
+              <span style="color:#888780;font-size:13px;">${size}</span>
+            </div>
+            <span style="font-weight:500;color:#1A1A1A;">${price.toLocaleString()} ฿</span>
+          </div>`;
+      }).join('');
+
+      // Cost
+      const distLabel = document.getElementById('distance').options[document.getElementById('distance').selectedIndex].text;
+      document.getElementById('modal-cost').innerHTML = `
+        <div style="display:flex;justify-content:space-between;color:#888780;">
+          <span>ค่าบริการรวม (${items.length} รายการ)</span>
+          <span>${subtotal.toLocaleString()} บาท</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;color:#888780;">
+          <span>ค่าเดินทาง (${distLabel.split('(')[0].trim()})</span>
+          <span>${travelFee > 0 ? travelFee.toLocaleString() + ' บาท' : 'ฟรี'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:600;color:#1A1A1A;margin-top:4px;padding-top:10px;border-top:2px solid #1A1A1A;">
+          <span>ยอดรวมสุทธิ</span>
+          <span>${total.toLocaleString()} บาท</span>
+        </div>`;
+
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    // ========================
+    // MODAL CONTROLS
+    // ========================
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    function closeModalOnOverlay(e) {
+      if (e.target === document.getElementById('modal')) closeModal();
+    }
+
+    function printBooking() {
+      window.print();
+    }
+
+    // ========================
+    // RESET
+    // ========================
+    function resetForm() {
+      if (!confirm('ล้างข้อมูลทั้งหมด?')) return;
+      document.getElementById('customer-name').value    = '';
+      document.getElementById('customer-phone').value   = '';
+      document.getElementById('customer-address').value = '';
+      document.getElementById('distance').value         = '';
+      setDefaultDate();
+      document.getElementById('booking-time').value = '09:00';
+
+      items = [];
+      itemCounter = 0;
+      document.getElementById('service-list').innerHTML = '';
+      addServiceItem();
+    }
+  </script>
+
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #modal-box, #modal-box * { visibility: visible; }
+      #modal-box { position: fixed; left: 0; top: 0; width: 100%; box-shadow: none; }
+      .modal-overlay { background: none; }
+    }
+  </style>
+</body>
+</html>
