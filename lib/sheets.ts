@@ -3,23 +3,24 @@ import type { PricingData, SizeOption, DistanceOption, Prices } from '@/types'
 export const SHEET_BASE =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vQb3PP4W0hw2FF5j32puu-Frc4DRnXGarXPif1qOGePLHHGl-1-jGnx06FCgGcFSiqPboR7diZmFL5X/pub?output=csv'
 
-// Structural defaults only — NO hardcoded prices
+// Structural defaults — values match the actual Google Sheet
 export const DEFAULT_SIZES: SizeOption[] = [
-  { key: '9000',  label: '9,000 BTU' },
+  { key: '9000',  label: '9,000 BTU'  },
   { key: '12000', label: '12,000 BTU' },
   { key: '18000', label: '18,000 BTU' },
   { key: '24000', label: '24,000 BTU' },
+  { key: '36000', label: '36,000 BTU' },
 ]
 
 export const EMPTY_PRICES: Prices = { wash: {}, repair: {}, install: {} }
 
 export const DEFAULT_DISTANCE_OPTIONS: DistanceOption[] = [
-  { label: '0–5 กม.',         fee: 0   },
-  { label: '6–10 กม.',        fee: 50  },
-  { label: '11–20 กม.',       fee: 100 },
-  { label: '21–30 กม.',       fee: 200 },
-  { label: '31–50 กม.',       fee: 300 },
-  { label: 'มากกว่า 50 กม.', fee: 500 },
+  { label: '0–5 กม.',   fee: 0   },
+  { label: '6–10 กม.',  fee: 100 },
+  { label: '11–20 กม.', fee: 200 },
+  { label: '21–30 กม.', fee: 300 },
+  { label: '31–50 กม.', fee: 500 },
+  { label: '51+ กม.',   fee: 800 },
 ]
 
 function toNum(str: string): number {
@@ -74,10 +75,11 @@ export function parseRateSheet(csv: string): { sizes: SizeOption[]; prices: Pric
     const name = (row[0] || '').trim()
     if (!name) continue
 
+    const n = name.toLowerCase()
     let svcKey: keyof Prices | null = null
-    if (name.includes('ล้าง'))     svcKey = 'wash'
-    else if (name.includes('ซ่อม'))    svcKey = 'repair'
-    else if (name.includes('ติดตั้ง')) svcKey = 'install'
+    if      (n === 'wash'    || name.includes('ล้าง'))     svcKey = 'wash'
+    else if (n === 'repair'  || name.includes('ซ่อม'))     svcKey = 'repair'
+    else if (n === 'install' || name.includes('ติดตั้ง'))  svcKey = 'install'
     if (!svcKey) continue
 
     for (const { idx, key } of sizeCols) {
